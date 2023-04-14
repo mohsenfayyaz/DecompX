@@ -1,0 +1,11 @@
+scikit-learn
+scipy
+pandas
+regex
+numpy
+notebook
+jupyter
+ipykernel
+ipython
+datasets==1.18.3
+transformers==4.17.0

@@ -1,0 +1,10 @@
+jupyterlab
+jupyter
+matplotlib
+numpy
+pandas
+scipy
+seaborn
+tqdm
+datasets==1.18.3
+transformers==4.18.0
