@@ -24,7 +24,7 @@ from packaging import version
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from .globenc_utils import GlobencConfig, GlobencOutput
+from .decompx_utils import DecompXConfig, DecompXOutput
 
 from transformers.activations import ACT2FN, gelu
 from transformers.modeling_outputs import (
@@ -52,7 +52,6 @@ from transformers.utils import (
 )
 from transformers.models.roberta.configuration_roberta import RobertaConfig
 
-
 logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "roberta-base"
@@ -68,6 +67,7 @@ ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "roberta-large-openai-detector",
     # See all RoBERTa models at https://huggingface.co/models?filter=roberta
 ]
+
 
 def output_builder(input_vector, output_mode):
     if output_mode is None:
@@ -119,7 +119,7 @@ class RobertaEmbeddings(nn.Module):
         )
 
     def forward(
-        self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0
+            self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0
     ):
         if position_ids is None:
             if input_ids is not None:
@@ -220,16 +220,16 @@ class RobertaSelfAttention(nn.Module):
         return x.permute(0, 3, 1, 2, 4)
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attribution_vectors: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        output_attentions: Optional[bool] = False,
-        globenc_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
+            self,
+            hidden_states: torch.Tensor,
+            attribution_vectors: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+            output_attentions: Optional[bool] = False,
+            decompx_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
         mixed_query_layer = self.query(hidden_states)
 
@@ -315,7 +315,7 @@ class RobertaSelfAttention(nn.Module):
 
         # added by Fayyaz / Modarressi
         # -------------------------------
-        if globenc_ready:
+        if decompx_ready:
             outputs = (context_layer, attention_probs, value_layer, decomposed_value_layer)
             return outputs
         # -------------------------------
@@ -336,14 +336,14 @@ class RobertaSelfOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor,
-        globenc_ready=False):  # added by Fayyaz / Modarressi
+                decompx_ready=False):  # added by Fayyaz / Modarressi
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         # hidden_states = self.LayerNorm(hidden_states + input_tensor)
         pre_ln_states = hidden_states + input_tensor  # added by Fayyaz / Modarressi
         post_ln_states = self.LayerNorm(pre_ln_states)  # added by Fayyaz / Modarressi
         # added by Fayyaz / Modarressi
-        if globenc_ready:
+        if decompx_ready:
             return post_ln_states, pre_ln_states
         else:
             return post_ln_states
@@ -376,16 +376,16 @@ class RobertaAttention(nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attribution_vectors: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        output_attentions: Optional[bool] = False,
-        globenc_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
+            self,
+            hidden_states: torch.Tensor,
+            attribution_vectors: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+            output_attentions: Optional[bool] = False,
+            decompx_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
         self_outputs = self.self(
             hidden_states,
@@ -396,20 +396,21 @@ class RobertaAttention(nn.Module):
             encoder_attention_mask,
             past_key_value,
             output_attentions,
-            globenc_ready=globenc_ready,  # added by Fayyaz / Modarressi
+            decompx_ready=decompx_ready,  # added by Fayyaz / Modarressi
         )
         attention_output = self.output(
             self_outputs[0],
             hidden_states,
-            globenc_ready=globenc_ready,  # added by Goro Kobayashi (Edited by Fayyaz / Modarressi)
+            decompx_ready=decompx_ready,  # added by Goro Kobayashi (Edited by Fayyaz / Modarressi)
         )
 
         # Added by Fayyaz / Modarressi
         # -------------------------------
-        if globenc_ready:
+        if decompx_ready:
             _, attention_probs, value_layer, decomposed_value_layer = self_outputs
             attention_output, pre_ln_states = attention_output
-            outputs = (attention_output, attention_probs,) + (value_layer, decomposed_value_layer, pre_ln_states)  # add attentions and norms if we output them
+            outputs = (attention_output, attention_probs,) + (
+                value_layer, decomposed_value_layer, pre_ln_states)  # add attentions and norms if we output them
             return outputs
         # -------------------------------
 
@@ -427,10 +428,10 @@ class RobertaIntermediate(nn.Module):
         else:
             self.intermediate_act_fn = config.hidden_act
 
-    def forward(self, hidden_states: torch.Tensor, globenc_ready: Optional[bool] = False) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, decompx_ready: Optional[bool] = False) -> torch.Tensor:
         pre_act_hidden_states = self.dense(hidden_states)
         hidden_states = self.intermediate_act_fn(pre_act_hidden_states)
-        if globenc_ready:
+        if decompx_ready:
             return hidden_states, pre_act_hidden_states
         return hidden_states, None
 
@@ -443,7 +444,7 @@ class RobertaOutput(nn.Module):
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor, globenc_ready: Optional[bool] = False):
+    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor, decompx_ready: Optional[bool] = False):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         # hidden_states = self.LayerNorm(hidden_states + input_tensor)
@@ -452,7 +453,7 @@ class RobertaOutput(nn.Module):
         # -------------------------------
         pre_ln_states = hidden_states + input_tensor
         hidden_states = self.LayerNorm(pre_ln_states)
-        if globenc_ready:
+        if decompx_ready:
             return hidden_states, pre_ln_states
         return hidden_states, None
         # -------------------------------
@@ -496,55 +497,56 @@ class RobertaLayer(nn.Module):
             weights = (torch.norm(attribution_vectors, dim=-1) != 0) * 1.0
         elif bias_decomp_type == "cls":
             weights = torch.zeros(attribution_vectors.shape[:-1], device=attribution_vectors.device)
-            weights[:,:,0] = 1.0
+            weights[:, :, 0] = 1.0
         elif bias_decomp_type == "dot":
             weights = torch.einsum("bskd,d->bsk", attribution_vectors, bias)
         elif bias_decomp_type == "biastoken":
             attrib_shape = attribution_vectors.shape
             if attrib_shape[1] == attrib_shape[2]:
-                attribution_vectors = torch.concat([attribution_vectors, torch.zeros((attrib_shape[0], attrib_shape[1], 1, attrib_shape[3]), device=attribution_vectors.device)], dim=-2)
-            attribution_vectors[:,:,-1] = attribution_vectors[:,:,-1] + bias
+                attribution_vectors = torch.concat([attribution_vectors,
+                                                    torch.zeros((attrib_shape[0], attrib_shape[1], 1, attrib_shape[3]),
+                                                                device=attribution_vectors.device)], dim=-2)
+            attribution_vectors[:, :, -1] = attribution_vectors[:, :, -1] + bias
             return attribution_vectors
 
         weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
         weighted_bias = torch.matmul(weights.unsqueeze(dim=-1), bias.unsqueeze(dim=0))
         return attribution_vectors + weighted_bias
 
-    
-    def ln_decomposer(self, attribution_vectors, pre_ln_states, gamma, beta, eps, include_biases=True, bias_decomp_type="absdot"):
+    def ln_decomposer(self, attribution_vectors, pre_ln_states, gamma, beta, eps, include_biases=True,
+                      bias_decomp_type="absdot"):
         mean = pre_ln_states.mean(-1, keepdim=True)  # (batch, seq_len, 1) m(y=Σy_j)
         var = (pre_ln_states - mean).pow(2).mean(-1, keepdim=True).unsqueeze(dim=2)  # (batch, seq_len, 1, 1)  s(y)
 
         each_mean = attribution_vectors.mean(-1, keepdim=True)  # (batch, seq_len, seq_len, 1) m(y_j)
 
         normalized_layer = torch.div(attribution_vectors - each_mean,
-                                         (var + eps) ** (1 / 2))  # (batch, seq_len, seq_len, all_head_size)
+                                     (var + eps) ** (1 / 2))  # (batch, seq_len, seq_len, all_head_size)
 
         post_ln_layer = torch.einsum('bskd,d->bskd', normalized_layer,
-                                         gamma)  # (batch, seq_len, seq_len, all_head_size)
-        
+                                     gamma)  # (batch, seq_len, seq_len, all_head_size)
+
         if include_biases:
             return self.bias_decomposer(beta, post_ln_layer, bias_decomp_type=bias_decomp_type)
         else:
-            return post_ln_layer    
-
+            return post_ln_layer
 
     def gelu_linear_approximation(self, intermediate_hidden_states, intermediate_output):
         def phi(x):
             return (1 + torch.erf(x / math.sqrt(2))) / 2.
-        
+
         def normal_pdf(x):
-            return torch.exp(-(x**2) / 2) / math.sqrt(2. * math.pi)
+            return torch.exp(-(x ** 2) / 2) / math.sqrt(2. * math.pi)
 
         def gelu_deriv(x):
-            return phi(x)+x*normal_pdf(x)
-        
+            return phi(x) + x * normal_pdf(x)
+
         m = gelu_deriv(intermediate_hidden_states)
         b = intermediate_output - m * intermediate_hidden_states
         return m, b
 
-
-    def gelu_decomposition(self, attribution_vectors, intermediate_hidden_states, intermediate_output, bias_decomp_type):
+    def gelu_decomposition(self, attribution_vectors, intermediate_hidden_states, intermediate_output,
+                           bias_decomp_type):
         m, b = self.gelu_linear_approximation(intermediate_hidden_states, intermediate_output)
         mx = attribution_vectors * m.unsqueeze(dim=-2)
 
@@ -559,46 +561,49 @@ class RobertaLayer(nn.Module):
             weights = (torch.norm(mx, dim=-1) != 0) * 1.0
         elif bias_decomp_type == "cls":
             weights = torch.zeros(mx.shape[:-1], device=mx.device)
-            weights[:,:,0] = 1.0
+            weights[:, :, 0] = 1.0
 
         weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
         weighted_bias = torch.einsum("bsl,bsk->bskl", b, weights)
         return mx + weighted_bias
 
-
     def gelu_zo_decomposition(self, attribution_vectors, intermediate_hidden_states, intermediate_output):
         m = intermediate_output / (intermediate_hidden_states + 1e-12)
         mx = attribution_vectors * m.unsqueeze(dim=-2)
         return mx
-    
 
-    def ffn_decomposer(self, attribution_vectors, intermediate_hidden_states, intermediate_output, include_biases=True, approximation_type="GeLU_LA", bias_decomp_type="absdot"):
+    def ffn_decomposer(self, attribution_vectors, intermediate_hidden_states, intermediate_output, include_biases=True,
+                       approximation_type="GeLU_LA", bias_decomp_type="absdot"):
         post_first_layer = torch.einsum("ld,bskd->bskl", self.intermediate.dense.weight, attribution_vectors)
         if include_biases:
-            post_first_layer = self.bias_decomposer(self.intermediate.dense.bias, post_first_layer, bias_decomp_type=bias_decomp_type)
+            post_first_layer = self.bias_decomposer(self.intermediate.dense.bias, post_first_layer,
+                                                    bias_decomp_type=bias_decomp_type)
 
         if approximation_type == "ReLU":
             mask_for_gelu_approx = (intermediate_hidden_states > 0)
             post_act_first_layer = torch.einsum("bskl, bsl->bskl", post_first_layer, mask_for_gelu_approx)
             post_act_first_layer = post_first_layer * mask_for_gelu_approx.unsqueeze(dim=-2)
         elif approximation_type == "GeLU_LA":
-            post_act_first_layer = self.gelu_decomposition(post_first_layer, intermediate_hidden_states, intermediate_output, bias_decomp_type=bias_decomp_type)
+            post_act_first_layer = self.gelu_decomposition(post_first_layer, intermediate_hidden_states,
+                                                           intermediate_output, bias_decomp_type=bias_decomp_type)
         elif approximation_type == "GeLU_ZO":
-            post_act_first_layer = self.gelu_zo_decomposition(post_first_layer, intermediate_hidden_states, intermediate_output)
+            post_act_first_layer = self.gelu_zo_decomposition(post_first_layer, intermediate_hidden_states,
+                                                              intermediate_output)
 
         post_second_layer = torch.einsum("bskl, dl->bskd", post_act_first_layer, self.output.dense.weight)
         if include_biases:
-            post_second_layer = self.bias_decomposer(self.output.dense.bias, post_second_layer, bias_decomp_type=bias_decomp_type)
+            post_second_layer = self.bias_decomposer(self.output.dense.bias, post_second_layer,
+                                                     bias_decomp_type=bias_decomp_type)
 
         return post_second_layer
 
-
-    def ffn_decomposer_fast(self, attribution_vectors, intermediate_hidden_states, intermediate_output, include_biases=True, approximation_type="GeLU_LA", bias_decomp_type="absdot"):
+    def ffn_decomposer_fast(self, attribution_vectors, intermediate_hidden_states, intermediate_output,
+                            include_biases=True, approximation_type="GeLU_LA", bias_decomp_type="absdot"):
         if approximation_type == "ReLU":
             theta = (intermediate_hidden_states > 0)
         elif approximation_type == "GeLU_ZO":
             theta = intermediate_output / (intermediate_hidden_states + 1e-12)
-        
+
         scaled_W1 = torch.einsum("bsl,ld->bsld", theta, self.intermediate.dense.weight)
         W_equiv = torch.einsum("bsld, zl->bszd", scaled_W1, self.output.dense.weight)
 
@@ -625,21 +630,20 @@ class RobertaLayer(nn.Module):
             post_ffn_layer = post_ffn_layer + weighted_bias
 
         return post_ffn_layer
-    
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attribution_vectors: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        output_attentions: Optional[bool] = False,
-        globenc_config: Optional[GlobencConfig] = None, # added by Fayyaz / Modarressi
+            self,
+            hidden_states: torch.Tensor,
+            attribution_vectors: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+            output_attentions: Optional[bool] = False,
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
-        globenc_ready = globenc_config is not None
+        decompx_ready = decompx_config is not None
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         # self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
         # self_attention_outputs = self.attention(
@@ -649,7 +653,7 @@ class RobertaLayer(nn.Module):
         #     head_mask,
         #     output_attentions=output_attentions,
         #     past_key_value=self_attn_past_key_value,
-        #     globenc_ready=globenc_ready,
+        #     decompx_ready=decompx_ready,
         # )
         self_attention_outputs = self.attention(
             hidden_states,
@@ -657,7 +661,7 @@ class RobertaLayer(nn.Module):
             attention_mask,
             head_mask,
             output_attentions=output_attentions,
-            globenc_ready=globenc_ready,
+            decompx_ready=decompx_ready,
         )  # changed by Goro Kobayashi
         attention_output = self_attention_outputs[0]
 
@@ -699,22 +703,22 @@ class RobertaLayer(nn.Module):
 
         # Added by Fayyaz / Modarressi
         # -------------------------------
-        bias_decomp_type = "biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type
-        intermediate_output, pre_act_hidden_states = self.intermediate(attention_output, globenc_ready=globenc_ready)
-        layer_output, pre_ln2_states = self.output(intermediate_output, attention_output, globenc_ready=globenc_ready)
-        if globenc_ready:
+        bias_decomp_type = "biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type
+        intermediate_output, pre_act_hidden_states = self.intermediate(attention_output, decompx_ready=decompx_ready)
+        layer_output, pre_ln2_states = self.output(intermediate_output, attention_output, decompx_ready=decompx_ready)
+        if decompx_ready:
             attention_probs, value_layer, decomposed_value_layer, pre_ln_states = outputs
 
             headmixing_weight = self.attention.output.dense.weight.view(self.all_head_size, self.num_attention_heads,
-                                      self.attention_head_size)
+                                                                        self.attention_head_size)
 
-            if decomposed_value_layer is None or globenc_config.aggregation != "vector":
+            if decomposed_value_layer is None or decompx_config.aggregation != "vector":
                 transformed_layer = torch.einsum('bhsv,dhv->bhsd', value_layer, headmixing_weight)  # V * W^o  (z=(qk)v)
                 # Make weighted vectors αf(x) from transformed vectors (transformed_layer)
                 # and attention weights (attentions):
                 # (batch, num_heads, seq_length, seq_length, all_head_size)
                 weighted_layer = torch.einsum('bhks,bhsd->bhksd', attention_probs,
-                                          transformed_layer)  # attention_probs(Q*K^t) * V * W^o
+                                              transformed_layer)  # attention_probs(Q*K^t) * V * W^o
                 # Sum each weighted vectors αf(x) over all heads:
                 # (batch, seq_length, seq_length, all_head_size)
                 summed_weighted_layer = weighted_layer.sum(dim=1)  # sum over heads
@@ -732,36 +736,38 @@ class RobertaLayer(nn.Module):
                 transformed_layer = torch.einsum('bhsqv,dhv->bhsqd', decomposed_value_layer, headmixing_weight)
 
                 weighted_layer = torch.einsum('bhks,bhsqd->bhkqd', attention_probs,
-                                          transformed_layer)  # attention_probs(Q*K^t) * V * W^o
+                                              transformed_layer)  # attention_probs(Q*K^t) * V * W^o
 
                 summed_weighted_layer = weighted_layer.sum(dim=1)  # sum over heads
 
                 residual_weighted_layer = summed_weighted_layer + attribution_vectors
-                accumulated_bias = torch.matmul(self.attention.output.dense.weight, self.attention.self.value.bias) + self.attention.output.dense.bias
+                accumulated_bias = torch.matmul(self.attention.output.dense.weight,
+                                                self.attention.self.value.bias) + self.attention.output.dense.bias
 
-            if globenc_config.include_biases:
-                residual_weighted_layer = self.bias_decomposer(accumulated_bias, residual_weighted_layer, bias_decomp_type)
+            if decompx_config.include_biases:
+                residual_weighted_layer = self.bias_decomposer(accumulated_bias, residual_weighted_layer,
+                                                               bias_decomp_type)
 
-            if globenc_config.include_LN1:
+            if decompx_config.include_LN1:
                 post_ln_layer = self.ln_decomposer(
                     attribution_vectors=residual_weighted_layer,
                     pre_ln_states=pre_ln_states,
                     gamma=self.attention.output.LayerNorm.weight.data,
                     beta=self.attention.output.LayerNorm.bias.data,
                     eps=self.attention.output.LayerNorm.eps,
-                    include_biases=globenc_config.include_biases,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
             else:
                 post_ln_layer = residual_weighted_layer
 
-            if globenc_config.include_FFN:
-                post_ffn_layer = self.ffn_decomposer_fast if globenc_config.FFN_fast_mode else self.ffn_decomposer(
+            if decompx_config.include_FFN:
+                post_ffn_layer = self.ffn_decomposer_fast if decompx_config.FFN_fast_mode else self.ffn_decomposer(
                     attribution_vectors=post_ln_layer,
                     intermediate_hidden_states=pre_act_hidden_states,
                     intermediate_output=intermediate_output,
-                    approximation_type=globenc_config.FFN_approx_type,
-                    include_biases=globenc_config.include_biases,
+                    approximation_type=decompx_config.FFN_approx_type,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
                 pre_ln2_layer = post_ln_layer + post_ffn_layer
@@ -769,25 +775,25 @@ class RobertaLayer(nn.Module):
                 pre_ln2_layer = post_ln_layer
                 post_ffn_layer = None
 
-            if globenc_config.include_LN2:
+            if decompx_config.include_LN2:
                 post_ln2_layer = self.ln_decomposer(
                     attribution_vectors=pre_ln2_layer,
                     pre_ln_states=pre_ln2_states,
                     gamma=self.output.LayerNorm.weight.data,
                     beta=self.output.LayerNorm.bias.data,
                     eps=self.output.LayerNorm.eps,
-                    include_biases=globenc_config.include_biases,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
             else:
                 post_ln2_layer = pre_ln2_layer
 
-            new_outputs = GlobencOutput(
-                attention=output_builder(summed_weighted_layer, globenc_config.output_attention),
-                res1=output_builder(residual_weighted_layer, globenc_config.output_res1),
-                LN1=output_builder(post_ln_layer, globenc_config.output_res2),
-                FFN=output_builder(post_ffn_layer, globenc_config.output_FFN),
-                res2=output_builder(pre_ln2_layer, globenc_config.output_res2),
+            new_outputs = DecompXOutput(
+                attention=output_builder(summed_weighted_layer, decompx_config.output_attention),
+                res1=output_builder(residual_weighted_layer, decompx_config.output_res1),
+                LN1=output_builder(post_ln_layer, decompx_config.output_res2),
+                FFN=output_builder(post_ffn_layer, decompx_config.output_FFN),
+                res2=output_builder(pre_ln2_layer, decompx_config.output_res2),
                 encoder=output_builder(post_ln2_layer, "both")
             )
             return (layer_output,) + (new_outputs,)
@@ -810,18 +816,18 @@ class RobertaEncoder(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = False,
-        output_hidden_states: Optional[bool] = False,
-        return_dict: Optional[bool] = True,
-        globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            self,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = False,
+            output_hidden_states: Optional[bool] = False,
+            return_dict: Optional[bool] = True,
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -829,22 +835,22 @@ class RobertaEncoder(nn.Module):
 
         next_decoder_cache = () if use_cache else None
 
-        aggregated_encoder_norms = None # added by Fayyaz / Modarressi
-        aggregated_encoder_vectors = None # added by Fayyaz / Modarressi
+        aggregated_encoder_norms = None  # added by Fayyaz / Modarressi
+        aggregated_encoder_vectors = None  # added by Fayyaz / Modarressi
 
         # -- added by Fayyaz / Modarressi
-        if globenc_config and globenc_config.output_all_layers:
-            all_globenc_outputs = GlobencOutput(
-                attention=() if globenc_config.output_attention else None,
-                res1=() if globenc_config.output_res1 else None,
-                LN1=() if globenc_config.output_LN1 else None,
-                FFN=() if globenc_config.output_LN1 else None,
-                res2=() if globenc_config.output_res2 else None,
-                encoder=() if globenc_config.output_encoder else None,
-                aggregated=() if globenc_config.output_aggregated and globenc_config.aggregation else None,
+        if decompx_config and decompx_config.output_all_layers:
+            all_decompx_outputs = DecompXOutput(
+                attention=() if decompx_config.output_attention else None,
+                res1=() if decompx_config.output_res1 else None,
+                LN1=() if decompx_config.output_LN1 else None,
+                FFN=() if decompx_config.output_LN1 else None,
+                res2=() if decompx_config.output_res2 else None,
+                encoder=() if decompx_config.output_encoder else None,
+                aggregated=() if decompx_config.output_aggregated and decompx_config.aggregation else None,
             )
         else:
-            all_globenc_outputs = None
+            all_decompx_outputs = None
         # -- added by Fayyaz / Modarressi
 
         for i, layer_module in enumerate(self.layer):
@@ -886,7 +892,7 @@ class RobertaEncoder(nn.Module):
                     encoder_attention_mask,
                     past_key_value,
                     output_attentions,
-                    globenc_config # added by Fayyaz / Modarressi
+                    decompx_config  # added by Fayyaz / Modarressi
                 )
 
             hidden_states = layer_outputs[0]
@@ -898,47 +904,52 @@ class RobertaEncoder(nn.Module):
                     all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
 
             # added by Fayyaz / Modarressi
-            if globenc_config:
-                globenc_output = layer_outputs[1]
-                if globenc_config.aggregation == "rollout":
-                    if globenc_config.include_classifier_w_pooler:
+            if decompx_config:
+                decompx_output = layer_outputs[1]
+                if decompx_config.aggregation == "rollout":
+                    if decompx_config.include_classifier_w_pooler:
                         raise Exception("Classifier and pooler could be included in vector aggregation mode")
 
-                    encoder_norms = globenc_output.encoder[0][0]
+                    encoder_norms = decompx_output.encoder[0][0]
 
                     if aggregated_encoder_norms is None:
-                        aggregated_encoder_norms = encoder_norms * torch.exp(attention_mask).view((-1, attention_mask.shape[-1], 1))
+                        aggregated_encoder_norms = encoder_norms * torch.exp(attention_mask).view(
+                            (-1, attention_mask.shape[-1], 1))
                     else:
                         aggregated_encoder_norms = torch.einsum("ijk,ikm->ijm", encoder_norms, aggregated_encoder_norms)
-                        
-                    if globenc_config.output_aggregated == "norm":
-                        globenc_output.aggregated = (aggregated_encoder_norms,)
-                    elif globenc_config.output_aggregated is not None:
-                        raise Exception("Rollout aggregated values are only available in norms. Set output_aggregated to 'norm'.")
+
+                    if decompx_config.output_aggregated == "norm":
+                        decompx_output.aggregated = (aggregated_encoder_norms,)
+                    elif decompx_config.output_aggregated is not None:
+                        raise Exception(
+                            "Rollout aggregated values are only available in norms. Set output_aggregated to 'norm'.")
 
 
-                elif globenc_config.aggregation == "vector":
-                    aggregated_encoder_vectors = globenc_output.encoder[0][1]
+                elif decompx_config.aggregation == "vector":
+                    aggregated_encoder_vectors = decompx_output.encoder[0][1]
 
-                    if globenc_config.include_classifier_w_pooler:
-                        globenc_output.aggregated = (aggregated_encoder_vectors,)
+                    if decompx_config.include_classifier_w_pooler:
+                        decompx_output.aggregated = (aggregated_encoder_vectors,)
                     else:
-                        globenc_output.aggregated = output_builder(aggregated_encoder_vectors, globenc_config.output_aggregated)
+                        decompx_output.aggregated = output_builder(aggregated_encoder_vectors,
+                                                                   decompx_config.output_aggregated)
 
-                globenc_output.encoder = output_builder(globenc_output.encoder[0][1], globenc_config.output_encoder)
+                decompx_output.encoder = output_builder(decompx_output.encoder[0][1], decompx_config.output_encoder)
 
-                if globenc_config.output_all_layers:
-                    all_globenc_outputs.attention = all_globenc_outputs.attention + globenc_output.attention if globenc_config.output_attention else None
-                    all_globenc_outputs.res1 = all_globenc_outputs.res1 + globenc_output.res1 if globenc_config.output_res1 else None
-                    all_globenc_outputs.LN1 = all_globenc_outputs.LN1 + globenc_output.LN1 if globenc_config.output_LN1 else None
-                    all_globenc_outputs.FFN = all_globenc_outputs.FFN + globenc_output.FFN if globenc_config.output_FFN else None
-                    all_globenc_outputs.res2 = all_globenc_outputs.res2 + globenc_output.res2 if globenc_config.output_res2 else None
-                    all_globenc_outputs.encoder = all_globenc_outputs.encoder + globenc_output.encoder if globenc_config.output_encoder else None
+                if decompx_config.output_all_layers:
+                    all_decompx_outputs.attention = all_decompx_outputs.attention + decompx_output.attention if decompx_config.output_attention else None
+                    all_decompx_outputs.res1 = all_decompx_outputs.res1 + decompx_output.res1 if decompx_config.output_res1 else None
+                    all_decompx_outputs.LN1 = all_decompx_outputs.LN1 + decompx_output.LN1 if decompx_config.output_LN1 else None
+                    all_decompx_outputs.FFN = all_decompx_outputs.FFN + decompx_output.FFN if decompx_config.output_FFN else None
+                    all_decompx_outputs.res2 = all_decompx_outputs.res2 + decompx_output.res2 if decompx_config.output_res2 else None
+                    all_decompx_outputs.encoder = all_decompx_outputs.encoder + decompx_output.encoder if decompx_config.output_encoder else None
 
-                    if globenc_config.include_classifier_w_pooler and globenc_config.aggregation == "vector":
-                        all_globenc_outputs.aggregated = all_globenc_outputs.aggregated + output_builder(aggregated_encoder_vectors, globenc_config.output_aggregated) if globenc_config.output_aggregated else None
+                    if decompx_config.include_classifier_w_pooler and decompx_config.aggregation == "vector":
+                        all_decompx_outputs.aggregated = all_decompx_outputs.aggregated + output_builder(
+                            aggregated_encoder_vectors,
+                            decompx_config.output_aggregated) if decompx_config.output_aggregated else None
                     else:
-                        all_globenc_outputs.aggregated = all_globenc_outputs.aggregated + globenc_output.aggregated if globenc_config.output_aggregated else None
+                        all_decompx_outputs.aggregated = all_decompx_outputs.aggregated + decompx_output.aggregated if decompx_config.output_aggregated else None
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -952,8 +963,8 @@ class RobertaEncoder(nn.Module):
                     all_hidden_states,
                     all_self_attentions,
                     all_cross_attentions,
-                    globenc_output if globenc_config else None,
-                    all_globenc_outputs
+                    decompx_output if decompx_config else None,
+                    all_decompx_outputs
                 ]
                 if v is not None
             )
@@ -1147,21 +1158,21 @@ class RobertaModel(RobertaPreTrainedModel):
     )
     # Copied from transformers.models.bert.modeling_bert.BertModel.forward
     def forward(
-        self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            self,
+            input_ids: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            token_type_ids: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.Tensor] = None,
+            head_mask: Optional[torch.Tensor] = None,
+            inputs_embeds: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
+            past_key_values: Optional[List[torch.FloatTensor]] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
         r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
@@ -1260,7 +1271,7 @@ class RobertaModel(RobertaPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            globenc_config=globenc_config, # added by Fayyaz / Modarressi
+            decompx_config=decompx_config,  # added by Fayyaz / Modarressi
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
@@ -1310,21 +1321,21 @@ class RobertaForCausalLM(RobertaPreTrainedModel):
     @add_start_docstrings_to_model_forward(ROBERTA_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @replace_return_docstrings(output_type=CausalLMOutputWithCrossAttentions, config_class=_CONFIG_FOR_DOC)
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        past_key_values: Tuple[Tuple[torch.FloatTensor]] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            past_key_values: Tuple[Tuple[torch.FloatTensor]] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
@@ -1473,19 +1484,19 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         expected_loss=0.1,
     )
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -1580,8 +1591,8 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
 
     def tanh_linear_approximation(self, pre_act_pooled, post_act_pooled):
         def tanh_deriv(x):
-            return 1 - torch.tanh(x)**2.0
-        
+            return 1 - torch.tanh(x) ** 2.0
+
         m = tanh_deriv(pre_act_pooled)
         b = post_act_pooled - m * pre_act_pooled
         return m, b
@@ -1601,7 +1612,7 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
             weights = (torch.norm(mx, dim=-1) != 0) * 1.0
         elif bias_decomp_type == "cls":
             weights = torch.zeros(mx.shape[:-1], device=mx.device)
-            weights[:,0] = 1.0
+            weights[:, 0] = 1.0
         weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
         weighted_bias = torch.einsum("bd,bk->bkd", b, weights)
         return mx + weighted_bias
@@ -1610,14 +1621,16 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
         m = post_act_pooled / (pre_act_pooled + 1e-12)
         mx = attribution_vectors * m.unsqueeze(dim=-2)
         return mx
-    
-    def pooler_decomposer(self, attribution_vectors, pre_act_pooled, post_act_pooled, include_biases=True, bias_decomp_type="absdot", tanh_approx_type="LA"):
+
+    def pooler_decomposer(self, attribution_vectors, pre_act_pooled, post_act_pooled, include_biases=True,
+                          bias_decomp_type="absdot", tanh_approx_type="LA"):
         post_pool = torch.einsum("ld,bsd->bsl", self.classifier.dense.weight, attribution_vectors)
         if include_biases:
             post_pool = self.bias_decomposer(self.classifier.dense.bias, post_pool, bias_decomp_type=bias_decomp_type)
 
         if tanh_approx_type == "LA":
-            post_act_pool = self.tanh_la_decomposition(post_pool, pre_act_pooled, post_act_pooled, bias_decomp_type=bias_decomp_type)
+            post_act_pool = self.tanh_la_decomposition(post_pool, pre_act_pooled, post_act_pooled,
+                                                       bias_decomp_type=bias_decomp_type)
         else:
             post_act_pool = self.tanh_zo_decomposition(post_pool, pre_act_pooled, post_act_pooled)
 
@@ -1639,11 +1652,11 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
             weights = (torch.norm(attribution_vectors, dim=-1) != 0) * 1.0
         elif bias_decomp_type == "cls":
             weights = torch.zeros(attribution_vectors.shape[:-1], device=attribution_vectors.device)
-            weights[:,0] = 1.0
+            weights[:, 0] = 1.0
         elif bias_decomp_type == "dot":
             weights = torch.einsum("bkd,d->bk", attribution_vectors, bias)
         elif bias_decomp_type == "biastoken":
-            attribution_vectors[:,-1] = attribution_vectors[:,-1] + bias
+            attribution_vectors[:, -1] = attribution_vectors[:, -1] + bias
             return attribution_vectors
 
         weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
@@ -1666,7 +1679,7 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
             weights = (torch.norm(attribution_vectors, dim=-1) != 0) * 1.0
         elif bias_decomp_type == "cls":
             weights = torch.zeros(attribution_vectors.shape[:-1], device=attribution_vectors.device)
-            weights[:,0] = 1.0
+            weights[:, 0] = 1.0
         elif bias_decomp_type == "dot":
             weights = torch.einsum("bkd,d->bk", attribution_vectors, biastoken)
 
@@ -1677,7 +1690,8 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
     def ffn_decomposer(self, attribution_vectors, include_biases=True, bias_decomp_type="absdot"):
         post_classifier = torch.einsum("ld,bkd->bkl", self.classifier.out_proj.weight, attribution_vectors)
         if include_biases:
-            post_classifier = self.bias_decomposer(self.classifier.out_proj.bias, post_classifier, bias_decomp_type=bias_decomp_type)
+            post_classifier = self.bias_decomposer(self.classifier.out_proj.bias, post_classifier,
+                                                   bias_decomp_type=bias_decomp_type)
 
         return post_classifier
 
@@ -1691,18 +1705,18 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
         expected_loss=0.08,
     )
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple, SequenceClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -1722,50 +1736,51 @@ class RobertaForSequenceClassification(RobertaPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            globenc_config=globenc_config
+            decompx_config=decompx_config
         )
         sequence_output = outputs[0]
-        logits, mid_classifier_outputs = self.classifier(sequence_output, globenc_ready=globenc_config is not None)
+        logits, mid_classifier_outputs = self.classifier(sequence_output, decompx_ready=decompx_config is not None)
 
-        if globenc_config is not None:
+        if decompx_config is not None:
             pre_act_pooled = mid_classifier_outputs[0]
             pooled_output = mid_classifier_outputs[1]
 
-            if globenc_config.include_classifier_w_pooler:
-                globenc_idx = -2 if globenc_config.output_all_layers else -1
-                aggregated_attribution_vectors = outputs[globenc_idx].aggregated[0]
+            if decompx_config.include_classifier_w_pooler:
+                decompx_idx = -2 if decompx_config.output_all_layers else -1
+                aggregated_attribution_vectors = outputs[decompx_idx].aggregated[0]
 
-                outputs[globenc_idx].aggregated = output_builder(aggregated_attribution_vectors, globenc_config.output_aggregated)
+                outputs[decompx_idx].aggregated = output_builder(aggregated_attribution_vectors,
+                                                                 decompx_config.output_aggregated)
 
                 pooler_decomposed = self.pooler_decomposer(
-                    attribution_vectors=aggregated_attribution_vectors[:, 0], 
-                    pre_act_pooled=pre_act_pooled, 
-                    post_act_pooled=pooled_output, 
-                    include_biases=globenc_config.include_biases,
-                    bias_decomp_type="biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type,
-                    tanh_approx_type=globenc_config.tanh_approx_type
+                    attribution_vectors=aggregated_attribution_vectors[:, 0],
+                    pre_act_pooled=pre_act_pooled,
+                    post_act_pooled=pooled_output,
+                    include_biases=decompx_config.include_biases,
+                    bias_decomp_type="biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type,
+                    tanh_approx_type=decompx_config.tanh_approx_type
                 )
 
                 aggregated_attribution_vectors = pooler_decomposed
 
-                outputs[globenc_idx].pooler = output_builder(pooler_decomposed, globenc_config.output_pooler)
+                outputs[decompx_idx].pooler = output_builder(pooler_decomposed, decompx_config.output_pooler)
 
                 classifier_decomposed = self.ffn_decomposer(
-                    attribution_vectors=aggregated_attribution_vectors, 
-                    include_biases=globenc_config.include_biases,
-                    bias_decomp_type="biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type
+                    attribution_vectors=aggregated_attribution_vectors,
+                    include_biases=decompx_config.include_biases,
+                    bias_decomp_type="biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type
                 )
-                
-                if globenc_config.include_bias_token and globenc_config.bias_decomp_type is not None:
-                    bias_token = classifier_decomposed[:,-1,:].detach().clone()
-                    classifier_decomposed = classifier_decomposed[:,:-1,:]
+
+                if decompx_config.include_bias_token and decompx_config.bias_decomp_type is not None:
+                    bias_token = classifier_decomposed[:, -1, :].detach().clone()
+                    classifier_decomposed = classifier_decomposed[:, :-1, :]
                     classifier_decomposed = self.biastoken_decomposer(
-                        bias_token, 
-                        classifier_decomposed, 
-                        bias_decomp_type=globenc_config.bias_decomp_type
+                        bias_token,
+                        classifier_decomposed,
+                        bias_decomp_type=decompx_config.bias_decomp_type
                     )
 
-                outputs[globenc_idx].classifier = classifier_decomposed if globenc_config.output_classifier else None
+                outputs[decompx_idx].classifier = classifier_decomposed if decompx_config.output_classifier else None
 
         loss = None
         if labels is not None:
@@ -1830,17 +1845,17 @@ class RobertaForMultipleChoice(RobertaPreTrainedModel):
         config_class=_CONFIG_FOR_DOC,
     )
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, MultipleChoiceModelOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -1930,17 +1945,17 @@ class RobertaForTokenClassification(RobertaPreTrainedModel):
         expected_loss=0.01,
     )
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -1994,14 +2009,14 @@ class RobertaClassificationHead(nn.Module):
         self.dropout = nn.Dropout(classifier_dropout)
         self.out_proj = nn.Linear(config.hidden_size, config.num_labels)
 
-    def forward(self, features, globenc_ready=False, **kwargs):
+    def forward(self, features, decompx_ready=False, **kwargs):
         x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
         x = self.dropout(x)
         pre_act = self.dense(x)
         post_act = torch.tanh(pre_act)
         x = self.dropout(post_act)
         x = self.out_proj(x)
-        if globenc_ready:
+        if decompx_ready:
             return x, (pre_act, post_act)
         return x, None
 
@@ -2037,18 +2052,18 @@ class RobertaForQuestionAnswering(RobertaPreTrainedModel):
         expected_loss=0.86,
     )
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        start_positions: Optional[torch.LongTensor] = None,
-        end_positions: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            start_positions: Optional[torch.LongTensor] = None,
+            end_positions: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, QuestionAnsweringModelOutput]:
         r"""
         start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):

@@ -27,7 +27,7 @@ from packaging import version
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from .globenc_utils import GlobencConfig, GlobencOutput
+from .decompx_utils import DecompXConfig, DecompXOutput
 
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import (
@@ -289,7 +289,7 @@ class BertSelfAttention(nn.Module):
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
             output_attentions: Optional[bool] = False,
-            globenc_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
+            decompx_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
         mixed_query_layer = self.query(hidden_states)
 
@@ -376,7 +376,7 @@ class BertSelfAttention(nn.Module):
 
         # added by Fayyaz / Modarressi
         # -------------------------------
-        if globenc_ready:
+        if decompx_ready:
             outputs = (context_layer, attention_probs, value_layer, decomposed_value_layer)
             return outputs
         # -------------------------------
@@ -396,14 +396,14 @@ class BertSelfOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor,
-                globenc_ready=False):  # added by Fayyaz / Modarressi
+                decompx_ready=False):  # added by Fayyaz / Modarressi
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         # hidden_states = self.LayerNorm(hidden_states + input_tensor)
         pre_ln_states = hidden_states + input_tensor  # added by Fayyaz / Modarressi
         post_ln_states = self.LayerNorm(pre_ln_states)  # added by Fayyaz / Modarressi
         # added by Fayyaz / Modarressi
-        if globenc_ready:
+        if decompx_ready:
             return post_ln_states, pre_ln_states
         else:
             return post_ln_states
@@ -444,7 +444,7 @@ class BertAttention(nn.Module):
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
             output_attentions: Optional[bool] = False,
-            globenc_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
+            decompx_ready: Optional[bool] = None,  # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
         self_outputs = self.self(
             hidden_states,
@@ -455,17 +455,17 @@ class BertAttention(nn.Module):
             encoder_attention_mask,
             past_key_value,
             output_attentions,
-            globenc_ready=globenc_ready,  # added by Fayyaz / Modarressi
+            decompx_ready=decompx_ready,  # added by Fayyaz / Modarressi
         )
         attention_output = self.output(
             self_outputs[0],
             hidden_states,
-            globenc_ready=globenc_ready,  # added by Goro Kobayashi (Edited by Fayyaz / Modarressi)
+            decompx_ready=decompx_ready,  # added by Goro Kobayashi (Edited by Fayyaz / Modarressi)
         )
 
         # Added by Fayyaz / Modarressi
         # -------------------------------
-        if globenc_ready:
+        if decompx_ready:
             _, attention_probs, value_layer, decomposed_value_layer = self_outputs
             attention_output, pre_ln_states = attention_output
             outputs = (attention_output, attention_probs,) + (value_layer, decomposed_value_layer, pre_ln_states)  # add attentions and norms if we output them
@@ -485,10 +485,10 @@ class BertIntermediate(nn.Module):
         else:
             self.intermediate_act_fn = config.hidden_act
 
-    def forward(self, hidden_states: torch.Tensor, globenc_ready: Optional[bool] = False) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, decompx_ready: Optional[bool] = False) -> torch.Tensor:
         pre_act_hidden_states = self.dense(hidden_states)
         hidden_states = self.intermediate_act_fn(pre_act_hidden_states)
-        if globenc_ready:
+        if decompx_ready:
             return hidden_states, pre_act_hidden_states
         return hidden_states, None
 
@@ -500,7 +500,7 @@ class BertOutput(nn.Module):
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor, globenc_ready: Optional[bool] = False):
+    def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor, decompx_ready: Optional[bool] = False):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         # hidden_states = self.LayerNorm(hidden_states + input_tensor)
@@ -509,7 +509,7 @@ class BertOutput(nn.Module):
         # -------------------------------
         pre_ln_states = hidden_states + input_tensor
         hidden_states = self.LayerNorm(pre_ln_states)
-        if globenc_ready:
+        if decompx_ready:
             return hidden_states, pre_ln_states
         return hidden_states, None
         # -------------------------------
@@ -689,7 +689,7 @@ class BertLayer(nn.Module):
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
             output_attentions: Optional[bool] = False,
-            globenc_config: Optional[GlobencConfig] = None, # added by Fayyaz / Modarressi
+            decompx_config: Optional[DecompXConfig] = None, # added by Fayyaz / Modarressi
     ) -> Tuple[torch.Tensor]:
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         # self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
@@ -700,14 +700,14 @@ class BertLayer(nn.Module):
         #     output_attentions=output_attentions,
         #     past_key_value=self_attn_past_key_value,
         # )
-        globenc_ready = globenc_config is not None
+        decompx_ready = decompx_config is not None
         self_attention_outputs = self.attention(
             hidden_states,
             attribution_vectors,
             attention_mask,
             head_mask,
             output_attentions=output_attentions,
-            globenc_ready=globenc_ready,
+            decompx_ready=decompx_ready,
         )  # changed by Goro Kobayashi
         attention_output = self_attention_outputs[0]
 
@@ -749,16 +749,16 @@ class BertLayer(nn.Module):
 
         # Added by Fayyaz / Modarressi
         # -------------------------------
-        bias_decomp_type = "biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type
-        intermediate_output, pre_act_hidden_states = self.intermediate(attention_output, globenc_ready=globenc_ready)
-        layer_output, pre_ln2_states = self.output(intermediate_output, attention_output, globenc_ready=globenc_ready)
-        if globenc_ready:
+        bias_decomp_type = "biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type
+        intermediate_output, pre_act_hidden_states = self.intermediate(attention_output, decompx_ready=decompx_ready)
+        layer_output, pre_ln2_states = self.output(intermediate_output, attention_output, decompx_ready=decompx_ready)
+        if decompx_ready:
             attention_probs, value_layer, decomposed_value_layer, pre_ln_states = outputs
 
             headmixing_weight = self.attention.output.dense.weight.view(self.all_head_size, self.num_attention_heads,
                                       self.attention_head_size)
 
-            if decomposed_value_layer is None or globenc_config.aggregation != "vector":
+            if decomposed_value_layer is None or decompx_config.aggregation != "vector":
                 transformed_layer = torch.einsum('bhsv,dhv->bhsd', value_layer, headmixing_weight)  # V * W^o  (z=(qk)v)
                 # Make weighted vectors αf(x) from transformed vectors (transformed_layer)
                 # and attention weights (attentions):
@@ -789,29 +789,29 @@ class BertLayer(nn.Module):
                 residual_weighted_layer = summed_weighted_layer + attribution_vectors
                 accumulated_bias = torch.matmul(self.attention.output.dense.weight, self.attention.self.value.bias) + self.attention.output.dense.bias
 
-            if globenc_config.include_biases:
+            if decompx_config.include_biases:
                 residual_weighted_layer = self.bias_decomposer(accumulated_bias, residual_weighted_layer, bias_decomp_type)
 
-            if globenc_config.include_LN1:
+            if decompx_config.include_LN1:
                 post_ln_layer = self.ln_decomposer(
                     attribution_vectors=residual_weighted_layer,
                     pre_ln_states=pre_ln_states,
                     gamma=self.attention.output.LayerNorm.weight.data,
                     beta=self.attention.output.LayerNorm.bias.data,
                     eps=self.attention.output.LayerNorm.eps,
-                    include_biases=globenc_config.include_biases,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
             else:
                 post_ln_layer = residual_weighted_layer
 
-            if globenc_config.include_FFN:
-                post_ffn_layer = self.ffn_decomposer_fast if globenc_config.FFN_fast_mode else self.ffn_decomposer(
+            if decompx_config.include_FFN:
+                post_ffn_layer = self.ffn_decomposer_fast if decompx_config.FFN_fast_mode else self.ffn_decomposer(
                     attribution_vectors=post_ln_layer,
                     intermediate_hidden_states=pre_act_hidden_states,
                     intermediate_output=intermediate_output,
-                    approximation_type=globenc_config.FFN_approx_type,
-                    include_biases=globenc_config.include_biases,
+                    approximation_type=decompx_config.FFN_approx_type,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
                 pre_ln2_layer = post_ln_layer + post_ffn_layer
@@ -819,25 +819,25 @@ class BertLayer(nn.Module):
                 pre_ln2_layer = post_ln_layer
                 post_ffn_layer = None
 
-            if globenc_config.include_LN2:
+            if decompx_config.include_LN2:
                 post_ln2_layer = self.ln_decomposer(
                     attribution_vectors=pre_ln2_layer,
                     pre_ln_states=pre_ln2_states,
                     gamma=self.output.LayerNorm.weight.data,
                     beta=self.output.LayerNorm.bias.data,
                     eps=self.output.LayerNorm.eps,
-                    include_biases=globenc_config.include_biases,
+                    include_biases=decompx_config.include_biases,
                     bias_decomp_type=bias_decomp_type
                 )
             else:
                 post_ln2_layer = pre_ln2_layer
 
-            new_outputs = GlobencOutput(
-                attention=output_builder(summed_weighted_layer, globenc_config.output_attention),
-                res1=output_builder(residual_weighted_layer, globenc_config.output_res1),
-                LN1=output_builder(post_ln_layer, globenc_config.output_res2),
-                FFN=output_builder(post_ffn_layer, globenc_config.output_FFN),
-                res2=output_builder(pre_ln2_layer, globenc_config.output_res2),
+            new_outputs = DecompXOutput(
+                attention=output_builder(summed_weighted_layer, decompx_config.output_attention),
+                res1=output_builder(residual_weighted_layer, decompx_config.output_res1),
+                LN1=output_builder(post_ln_layer, decompx_config.output_res2),
+                FFN=output_builder(post_ffn_layer, decompx_config.output_FFN),
+                res2=output_builder(pre_ln2_layer, decompx_config.output_res2),
                 encoder=output_builder(post_ln2_layer, "both")
             )
             return (layer_output,) + (new_outputs,)
@@ -875,7 +875,7 @@ class BertEncoder(nn.Module):
             output_attentions: Optional[bool] = False,
             output_hidden_states: Optional[bool] = False,
             return_dict: Optional[bool] = True,
-            globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -887,18 +887,18 @@ class BertEncoder(nn.Module):
         aggregated_encoder_vectors = None # added by Fayyaz / Modarressi
 
         # -- added by Fayyaz / Modarressi
-        if globenc_config and globenc_config.output_all_layers:
-            all_globenc_outputs = GlobencOutput(
-                attention=() if globenc_config.output_attention else None,
-                res1=() if globenc_config.output_res1 else None,
-                LN1=() if globenc_config.output_LN1 else None,
-                FFN=() if globenc_config.output_LN1 else None,
-                res2=() if globenc_config.output_res2 else None,
-                encoder=() if globenc_config.output_encoder else None,
-                aggregated=() if globenc_config.output_aggregated and globenc_config.aggregation else None,
+        if decompx_config and decompx_config.output_all_layers:
+            all_decompx_outputs = DecompXOutput(
+                attention=() if decompx_config.output_attention else None,
+                res1=() if decompx_config.output_res1 else None,
+                LN1=() if decompx_config.output_LN1 else None,
+                FFN=() if decompx_config.output_LN1 else None,
+                res2=() if decompx_config.output_res2 else None,
+                encoder=() if decompx_config.output_encoder else None,
+                aggregated=() if decompx_config.output_aggregated and decompx_config.aggregation else None,
             )
         else:
-            all_globenc_outputs = None
+            all_decompx_outputs = None
         # -- added by Fayyaz / Modarressi
 
         for i, layer_module in enumerate(self.layer):
@@ -940,7 +940,7 @@ class BertEncoder(nn.Module):
                     encoder_attention_mask,
                     past_key_value,
                     output_attentions,
-                    globenc_config # added by Fayyaz / Modarressi
+                    decompx_config # added by Fayyaz / Modarressi
                 )
 
             hidden_states = layer_outputs[0]
@@ -952,47 +952,47 @@ class BertEncoder(nn.Module):
                     all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
             
             # added by Fayyaz / Modarressi
-            if globenc_config:
-                globenc_output = layer_outputs[1]
-                if globenc_config.aggregation == "rollout":
-                    if globenc_config.include_classifier_w_pooler:
+            if decompx_config:
+                decompx_output = layer_outputs[1]
+                if decompx_config.aggregation == "rollout":
+                    if decompx_config.include_classifier_w_pooler:
                         raise Exception("Classifier and pooler could be included in vector aggregation mode")
 
-                    encoder_norms = globenc_output.encoder[0][0]
+                    encoder_norms = decompx_output.encoder[0][0]
 
                     if aggregated_encoder_norms is None:
                         aggregated_encoder_norms = encoder_norms * torch.exp(attention_mask).view((-1, attention_mask.shape[-1], 1))
                     else:
                         aggregated_encoder_norms = torch.einsum("ijk,ikm->ijm", encoder_norms, aggregated_encoder_norms)
                         
-                    if globenc_config.output_aggregated == "norm":
-                        globenc_output.aggregated = (aggregated_encoder_norms,)
-                    elif globenc_config.output_aggregated is not None:
+                    if decompx_config.output_aggregated == "norm":
+                        decompx_output.aggregated = (aggregated_encoder_norms,)
+                    elif decompx_config.output_aggregated is not None:
                         raise Exception("Rollout aggregated values are only available in norms. Set output_aggregated to 'norm'.")
 
 
-                elif globenc_config.aggregation == "vector":
-                    aggregated_encoder_vectors = globenc_output.encoder[0][1]
+                elif decompx_config.aggregation == "vector":
+                    aggregated_encoder_vectors = decompx_output.encoder[0][1]
 
-                    if globenc_config.include_classifier_w_pooler:
-                        globenc_output.aggregated = (aggregated_encoder_vectors,)
+                    if decompx_config.include_classifier_w_pooler:
+                        decompx_output.aggregated = (aggregated_encoder_vectors,)
                     else:
-                        globenc_output.aggregated = output_builder(aggregated_encoder_vectors, globenc_config.output_aggregated)
+                        decompx_output.aggregated = output_builder(aggregated_encoder_vectors, decompx_config.output_aggregated)
 
-                globenc_output.encoder = output_builder(globenc_output.encoder[0][1], globenc_config.output_encoder)
+                decompx_output.encoder = output_builder(decompx_output.encoder[0][1], decompx_config.output_encoder)
 
-                if globenc_config.output_all_layers:
-                    all_globenc_outputs.attention = all_globenc_outputs.attention + globenc_output.attention if globenc_config.output_attention else None
-                    all_globenc_outputs.res1 = all_globenc_outputs.res1 + globenc_output.res1 if globenc_config.output_res1 else None
-                    all_globenc_outputs.LN1 = all_globenc_outputs.LN1 + globenc_output.LN1 if globenc_config.output_LN1 else None
-                    all_globenc_outputs.FFN = all_globenc_outputs.FFN + globenc_output.FFN if globenc_config.output_FFN else None
-                    all_globenc_outputs.res2 = all_globenc_outputs.res2 + globenc_output.res2 if globenc_config.output_res2 else None
-                    all_globenc_outputs.encoder = all_globenc_outputs.encoder + globenc_output.encoder if globenc_config.output_encoder else None
+                if decompx_config.output_all_layers:
+                    all_decompx_outputs.attention = all_decompx_outputs.attention + decompx_output.attention if decompx_config.output_attention else None
+                    all_decompx_outputs.res1 = all_decompx_outputs.res1 + decompx_output.res1 if decompx_config.output_res1 else None
+                    all_decompx_outputs.LN1 = all_decompx_outputs.LN1 + decompx_output.LN1 if decompx_config.output_LN1 else None
+                    all_decompx_outputs.FFN = all_decompx_outputs.FFN + decompx_output.FFN if decompx_config.output_FFN else None
+                    all_decompx_outputs.res2 = all_decompx_outputs.res2 + decompx_output.res2 if decompx_config.output_res2 else None
+                    all_decompx_outputs.encoder = all_decompx_outputs.encoder + decompx_output.encoder if decompx_config.output_encoder else None
 
-                    if globenc_config.include_classifier_w_pooler and globenc_config.aggregation == "vector":
-                        all_globenc_outputs.aggregated = all_globenc_outputs.aggregated + output_builder(aggregated_encoder_vectors, globenc_config.output_aggregated) if globenc_config.output_aggregated else None
+                    if decompx_config.include_classifier_w_pooler and decompx_config.aggregation == "vector":
+                        all_decompx_outputs.aggregated = all_decompx_outputs.aggregated + output_builder(aggregated_encoder_vectors, decompx_config.output_aggregated) if decompx_config.output_aggregated else None
                     else:
-                        all_globenc_outputs.aggregated = all_globenc_outputs.aggregated + globenc_output.aggregated if globenc_config.output_aggregated else None
+                        all_decompx_outputs.aggregated = all_decompx_outputs.aggregated + decompx_output.aggregated if decompx_config.output_aggregated else None
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -1006,8 +1006,8 @@ class BertEncoder(nn.Module):
                     all_hidden_states,
                     all_self_attentions,
                     all_cross_attentions,
-                    globenc_output if globenc_config else None,
-                    all_globenc_outputs
+                    decompx_output if decompx_config else None,
+                    all_decompx_outputs
                 ]
                 if v is not None
             )
@@ -1026,13 +1026,13 @@ class BertPooler(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
 
-    def forward(self, hidden_states: torch.Tensor, globenc_ready=False) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, decompx_ready=False) -> torch.Tensor:
         # We "pool" the model by simply taking the hidden state corresponding
         # to the first token.
         first_token_tensor = hidden_states[:, 0]
         pre_pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pre_pooled_output)
-        if globenc_ready:
+        if decompx_ready:
             return pooled_output, pre_pooled_output
         return pooled_output
 
@@ -1378,7 +1378,7 @@ class BertModel(BertPreTrainedModel):
             output_attentions: Optional[bool] = None,
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
-            globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
         r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
@@ -1477,32 +1477,32 @@ class BertModel(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            globenc_config=globenc_config, # added by Fayyaz / Modarressi
+            decompx_config=decompx_config, # added by Fayyaz / Modarressi
         )
         sequence_output = encoder_outputs[0]
-        globenc_ready = globenc_config is not None
-        pooled_output = self.pooler(sequence_output, globenc_ready=globenc_ready) if self.pooler is not None else None
+        decompx_ready = decompx_config is not None
+        pooled_output = self.pooler(sequence_output, decompx_ready=decompx_ready) if self.pooler is not None else None
 
-        if globenc_ready:
+        if decompx_ready:
             pre_act_pooled = pooled_output[1]
             pooled_output = pooled_output[0]
 
-            if globenc_config.include_classifier_w_pooler:
-                globenc_idx = -2 if globenc_config.output_all_layers else -1
-                aggregated_attribution_vectors = encoder_outputs[globenc_idx].aggregated[0]
+            if decompx_config.include_classifier_w_pooler:
+                decompx_idx = -2 if decompx_config.output_all_layers else -1
+                aggregated_attribution_vectors = encoder_outputs[decompx_idx].aggregated[0]
 
-                encoder_outputs[globenc_idx].aggregated = output_builder(aggregated_attribution_vectors, globenc_config.output_aggregated)
+                encoder_outputs[decompx_idx].aggregated = output_builder(aggregated_attribution_vectors, decompx_config.output_aggregated)
 
                 pooler_decomposed = self.ffn_decomposer(
                     attribution_vectors=aggregated_attribution_vectors[:, 0], 
                     pre_act_pooled=pre_act_pooled, 
                     post_act_pooled=pooled_output, 
-                    include_biases=globenc_config.include_biases,
-                    bias_decomp_type="biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type,
-                    tanh_approx_type=globenc_config.tanh_approx_type
+                    include_biases=decompx_config.include_biases,
+                    bias_decomp_type="biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type,
+                    tanh_approx_type=decompx_config.tanh_approx_type
                 )
 
-                encoder_outputs[globenc_idx].pooler = pooler_decomposed
+                encoder_outputs[decompx_idx].pooler = pooler_decomposed
 
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
@@ -2085,7 +2085,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
             output_attentions: Optional[bool] = None,
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
-            globenc_config: Optional[GlobencConfig] = None,  # added by Fayyaz / Modarressi
+            decompx_config: Optional[DecompXConfig] = None,  # added by Fayyaz / Modarressi
     ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -2105,7 +2105,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            globenc_config=globenc_config
+            decompx_config=decompx_config
         )
 
         pooled_output = outputs[1]
@@ -2113,29 +2113,29 @@ class BertForSequenceClassification(BertPreTrainedModel):
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
-        if globenc_config and globenc_config.include_classifier_w_pooler:
-            globenc_idx = -2 if globenc_config.output_all_layers else -1
-            aggregated_attribution_vectors = outputs[globenc_idx].pooler
+        if decompx_config and decompx_config.include_classifier_w_pooler:
+            decompx_idx = -2 if decompx_config.output_all_layers else -1
+            aggregated_attribution_vectors = outputs[decompx_idx].pooler
 
-            outputs[globenc_idx].pooler = output_builder(aggregated_attribution_vectors, globenc_config.output_pooler)
+            outputs[decompx_idx].pooler = output_builder(aggregated_attribution_vectors, decompx_config.output_pooler)
 
             classifier_decomposed = self.ffn_decomposer(
                 attribution_vectors=aggregated_attribution_vectors, 
-                include_biases=globenc_config.include_biases,
-                bias_decomp_type="biastoken" if globenc_config.include_bias_token else globenc_config.bias_decomp_type
+                include_biases=decompx_config.include_biases,
+                bias_decomp_type="biastoken" if decompx_config.include_bias_token else decompx_config.bias_decomp_type
             )
             
-            if globenc_config.include_bias_token and globenc_config.bias_decomp_type is not None:
+            if decompx_config.include_bias_token and decompx_config.bias_decomp_type is not None:
                 bias_token = classifier_decomposed[:,-1,:].detach().clone()
                 classifier_decomposed = classifier_decomposed[:,:-1,:]
                 classifier_decomposed = self.biastoken_decomposer(
                     bias_token, 
                     classifier_decomposed, 
-                    bias_decomp_type=globenc_config.bias_decomp_type
+                    bias_decomp_type=decompx_config.bias_decomp_type
                 )
                 
 
-            outputs[globenc_idx].classifier = classifier_decomposed if globenc_config.output_classifier else None
+            outputs[decompx_idx].classifier = classifier_decomposed if decompx_config.output_classifier else None
 
         loss = None
         if labels is not None:
