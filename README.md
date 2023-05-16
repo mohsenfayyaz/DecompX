@@ -23,8 +23,8 @@
 
 | Demo | Link |
 |-|-|
-| Gradio Demo | Check out our online `Gradio` demo at <a href="https://huggingface.co/spaces/mohsenfayyaz/DecompX">https://huggingface.co/spaces/mohsenfayyaz/DecompX</a> |
-| Colab Demo | Check out our `Colab` demo at <a href="https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb">https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb</a> |
+| Gradio Demo | Check out our online `Gradio` demo at <a href="https://huggingface.co/spaces/mohsenfayyaz/DecompX">HuggingFace Spaces</a> |
+| Colab Demo | Check out our `Colab` demo at <a href="https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb">Google Colab</a> |
 
 ## Abstract
 
