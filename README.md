@@ -1,7 +1,7 @@
 # <p align="center">DecompX</p>
 
 <h3 align="center">
-  <p><a href="https://2023.aclweb.org/">[ACL 2023]</a> DecompX: Explaining Transformers Decisions by Propagating Token Decomposition</p>
+  <p><a href="https://2023.aclweb.org/">[ACL 2023]</a> DecompX:<br>Explaining Transformers Decisions by Propagating Token Decomposition</p>
 </h3>
 
 <p align="center">
@@ -23,8 +23,8 @@
 
 | Demo | Link |
 |-|-|
-| Gradio Demo | Check out our online `Gradio` demo at <a href="https://huggingface.co/spaces/mohsenfayyaz/DecompX">HuggingFace Spaces</a> |
-| Colab Demo | Check out our `Colab` demo at <a href="https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb">Google Colab</a> |
+| Gradio Demo | Check out our online `Gradio` demo on <a href="https://huggingface.co/spaces/mohsenfayyaz/DecompX">HuggingFace Spaces</a> |
+| Colab Demo | Check out our `Colab` demo on <a href="https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb">Google Colab</a> |
 
 ## Abstract
 
