@@ -5,9 +5,11 @@
 </h3>
 
 <p align="center">
-  <a href="https://arxiv.org/pdf/"><img alt="Paper" src="https://img.shields.io/badge/📃-Paper-blue"></a>
+  <a href=""><img alt="Paper" src="https://img.shields.io/badge/📃-Paper-blue"></a>
   <a href="https://huggingface.co/spaces/mohsenfayyaz/DecompX"><img alt="Gradio Demo" src="https://img.shields.io/badge/🤗-Open%20in%20Spaces-blue"></a>
   <a href="https://colab.research.google.com/github/mohsenfayyaz/DecompX/blob/main/DecompX_Colab_Demo.ipynb"><img alt="Colab Demo" data-canonical-src="https://colab.research.google.com/assets/colab-badge.svg" src="https://camo.githubusercontent.com/84f0493939e0c4de4e6dbe113251b4bfb5353e57134ffd9fcab6b8714514d4d1/68747470733a2f2f636f6c61622e72657365617263682e676f6f676c652e636f6d2f6173736574732f636f6c61622d62616467652e737667"></a>
+  <a href=""><img alt="Video" src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube&logoColor=FF0000"></a>
+  <a href=""><img alt="Slides" src="https://img.shields.io/badge/​-Slides-FFBB00?logo=googlesheets&logoColor=FFBB00"></a>
 </p>
 
 <!-- <h4 align="center">
