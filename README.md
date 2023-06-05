@@ -34,5 +34,11 @@
 ## Citation
 If you found this work useful, please consider citing our paper:
 ```bibtex
-@inproceedings{}
+@inproceedings{modarressi-etal-2023-DecompX,
+    title = "DecompX: Explaining Transformers Decisions by Propagating Token Decomposition",
+    author = "Modarressi, Ali and Fayyaz, Mohsen and Aghazadeh, Ehsan and Yaghoobzadeh, Yadollah and Pilehvar, Mohammad Taher",
+    booktitle = "Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics.",
+    publisher = "Association for Computational Linguistics",
+    year = "2023"
+}
 ```
