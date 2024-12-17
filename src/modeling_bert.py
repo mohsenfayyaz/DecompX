@@ -835,7 +835,7 @@ class BertLayer(nn.Module):
             new_outputs = DecompXOutput(
                 attention=output_builder(summed_weighted_layer, decompx_config.output_attention),
                 res1=output_builder(residual_weighted_layer, decompx_config.output_res1),
-                LN1=output_builder(post_ln_layer, decompx_config.output_res2),
+                LN1=output_builder(post_ln_layer, decompx_config.output_LN1),
                 FFN=output_builder(post_ffn_layer, decompx_config.output_FFN),
                 res2=output_builder(pre_ln2_layer, decompx_config.output_res2),
                 encoder=output_builder(post_ln2_layer, "both")
@@ -1483,7 +1483,7 @@ class BertModel(BertPreTrainedModel):
         decompx_ready = decompx_config is not None
         pooled_output = self.pooler(sequence_output, decompx_ready=decompx_ready) if self.pooler is not None else None
 
-        if decompx_ready:
+        if decompx_ready and pooled_output: # pooled output is None if not add_pooling_layer
             pre_act_pooled = pooled_output[1]
             pooled_output = pooled_output[0]
 

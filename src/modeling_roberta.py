@@ -791,7 +791,7 @@ class RobertaLayer(nn.Module):
             new_outputs = DecompXOutput(
                 attention=output_builder(summed_weighted_layer, decompx_config.output_attention),
                 res1=output_builder(residual_weighted_layer, decompx_config.output_res1),
-                LN1=output_builder(post_ln_layer, decompx_config.output_res2),
+                LN1=output_builder(post_ln_layer, decompx_config.output_LN1),
                 FFN=output_builder(post_ffn_layer, decompx_config.output_FFN),
                 res2=output_builder(pre_ln2_layer, decompx_config.output_res2),
                 encoder=output_builder(post_ln2_layer, "both")
